@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import List
 
 import pytest
-from snakemake_testing.runner import TemporaryDirectory, run
+from snakemake_testing.runner import TemporaryDirectory, run_snakemake
 
 
 @pytest.mark.parametrize("force_explicit", [True, False])
@@ -15,7 +15,7 @@ def test_temporary_directory_cleanup(force_explicit: bool) -> None:
 
 
 def test_simple():
-    run("tests/projects/simple")
+    run_snakemake("tests/projects/simple")
 
 
 def test_simple_cleanup():
@@ -26,7 +26,7 @@ def test_simple_cleanup():
     reg: List[Path] = []
 
     def impl():
-        tempdir = run("tests/projects/simple")
+        tempdir = run_snakemake("tests/projects/simple")
         reg.append(tempdir._directory.name)
 
     impl()
@@ -37,7 +37,7 @@ def test_simple_cleanup():
 
 
 def test_simple_context():
-    with run("tests/projects/simple") as tempdir:
+    with run_snakemake("tests/projects/simple") as tempdir:
         assert tempdir.is_dir()
         assert (tempdir / "output1.txt").is_file()
         assert (tempdir / "output2.txt").is_file()

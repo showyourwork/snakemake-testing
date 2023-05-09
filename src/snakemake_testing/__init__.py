@@ -12,5 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from snakemake_testing.runner import run as run
+from snakemake_testing.runner import run_snakemake as run_snakemake
 from snakemake_testing.version import __version__ as __version__
