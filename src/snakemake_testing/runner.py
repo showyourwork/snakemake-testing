@@ -64,6 +64,7 @@ class run_snakemake:
         self,
         path: PathLike,
         *snakemake_args: str,
+        snakemake_executable: str = "snakemake",
         check_exists: bool = True,
         check_contents: bool = True,
         show_diff: bool = False,
@@ -90,7 +91,11 @@ class run_snakemake:
         )
         with cwd(tmpdir):
             _exec_snakemake(
-                *snakemake_args, conda_frontend=conda_frontend, cwd=tmpdir, **kwargs
+                snakemake_executable,
+                *snakemake_args,
+                conda_frontend=conda_frontend,
+                cwd=tmpdir,
+                **kwargs,
             )
 
         diff_command = [diff_command] if isinstance(diff_command, str) else diff_command
@@ -155,6 +160,7 @@ class run_snakemake:
 
 
 def _exec_snakemake(
+    snakemake_executable: str,
     *args: str,
     conda_frontend: str = "mamba",
     cwd: Optional[PathLike] = None,
@@ -162,7 +168,7 @@ def _exec_snakemake(
 ) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         [
-            "snakemake",
+            snakemake_executable,
             "--cores",
             "1",
             "--use-conda",
