@@ -1,9 +1,10 @@
-import difflib
+import filecmp
 import hashlib
 import os
 import platform
 import shutil
 import subprocess
+import sys
 import weakref
 from contextlib import contextmanager
 from pathlib import Path
@@ -57,12 +58,16 @@ class TemporaryDirectory:
 
 
 class run_snakemake:
+    """Run snakemake on a test project and check the results"""
+
     def __init__(
         self,
         path: PathLike,
         *snakemake_args: str,
         check_exists: bool = True,
         check_contents: bool = True,
+        show_diff: bool = False,
+        diff_command: Union[str, Iterable[str]] = ("diff", "-u"),
         conda_frontend: Optional[str] = "mamba",
         expected_dirname: PathLike = "expected",
         **kwargs: Any,
@@ -88,9 +93,10 @@ class run_snakemake:
                 *snakemake_args, conda_frontend=conda_frontend, cwd=tmpdir, **kwargs
             )
 
+        diff_command = [diff_command] if isinstance(diff_command, str) else diff_command
         expected_dir = test_project_root / expected_dirname
         if (check_exists or check_contents) and expected_dir.is_dir():
-            diffs = []
+            diffs: List[Path] = []
             for expected in expected_dir.glob("**/*"):
                 # We don't check directories, only files. We can revisit this if
                 # necessary.
@@ -119,26 +125,18 @@ class run_snakemake:
                 if not check_contents:
                     continue
 
-                # Compare the contents of the expected and observed files.
-                # TODO(dfm): We're assuming that these are plaintext files, but
-                # do we want to handle binary files too?
-                expected_contents = expected.read_text().strip()
-                observed_contents = observed.read_text().strip()
-                if expected_contents != observed_contents:
-                    diffs.append(
-                        "".join(
-                            difflib.unified_diff(
-                                observed_contents.splitlines(keepends=True),
-                                expected_contents.splitlines(keepends=True),
-                                tofile=f"{expected.relative_to(test_project_root)}",
-                                fromfile=f"actual/{subpath}",
-                            )
-                        )
-                    )
+                files_match = filecmp.cmp(expected, observed, shallow=False)
+                if not files_match:
+                    diffs.append(subpath)
+
+                    if show_diff:
+                        diff = _diff(diff_command, expected, observed)
+                        print(diff, file=sys.stderr)
+
             if diffs:
                 raise ValueError(
-                    "Generated files differ from expected files:\n\n"
-                    + "\n\n".join(diffs)
+                    "The following files differ from expected contents:\n"
+                    + "\n".join(map("- {}".format, diffs))
                 )
 
     def __enter__(self) -> Path:
@@ -187,3 +185,24 @@ def _exec_snakemake(
             f"stderr:===\n{result.stderr}\n===\n\n"
         )
     return result
+
+
+def _diff(diff_command: Iterable[str], expected: Path, observed: Path) -> str:
+    tempdir = TemporaryDirectory(expected, [str(observed)])
+    try:
+        a = tempdir.name / "actual" / observed.name
+        b = tempdir.name / "expected" / expected.name
+        a.parent.mkdir(parents=True, exist_ok=True)
+        b.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(observed, a)
+        shutil.copy(expected, b)
+        result = subprocess.run(
+            list(diff_command)
+            + [a.relative_to(tempdir.name), b.relative_to(tempdir.name)],
+            check=False,
+            capture_output=True,
+            cwd=tempdir.name,
+        )
+    finally:
+        tempdir.cleanup()
+    return result.stdout.decode()
